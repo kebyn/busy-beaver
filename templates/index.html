@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>忙碌海狸演示</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">TURING MACHINE LAB</p>
+        <h1>忙碌海狸</h1>
+        <p class="lede">观察二符号图灵机在空白纸带上写出尽可能多的 <code>1</code>。</p>
+      </header>
+
+      <section class="panel controls" aria-labelledby="controls-title">
+        <h2 id="controls-title">运行设置</h2>
+        <div class="control-grid">
+          <label>
+            <span>机器</span>
+            <select id="machine-select">
+              {% for machine in machines %}
+              <option value="{{ machine.id }}" {% if machine.id == default_machine %}selected{% endif %}>
+                {{ machine.name }}（{{ machine.state_count }} 状态）
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            <span>最大步数</span>
+            <input id="max-steps" type="number" min="0" max="{{ max_server_steps }}" value="{{ default_max_steps }}" inputmode="numeric">
+          </label>
+          <label>
+            <span>播放速度</span>
+            <input id="speed" type="range" min="50" max="1000" value="250" step="50">
+            <small><output id="speed-value">250</output> 毫秒/步</small>
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="run" class="primary">运行</button>
+          <button id="pause">暂停</button>
+          <button id="single-step">单步</button>
+          <button id="reset">重置</button>
+        </div>
+        <p id="machine-note" class="machine-note" role="note"></p>
+      </section>
+
+      <section class="status-grid" aria-live="polite">
+        <article class="panel status-card"><span>状态</span><strong id="state">A</strong></article>
+        <article class="panel status-card"><span>已执行步数</span><strong id="steps">0</strong></article>
+        <article class="panel status-card"><span>读写头</span><strong id="head">0</strong></article>
+        <article class="panel status-card"><span>纸带上的 1</span><strong id="ones">0</strong></article>
+      </section>
+
+      <section class="panel tape-panel">
+        <div class="section-heading">
+          <h2>纸带窗口</h2>
+          <span id="result-badge" class="badge">尚未运行</span>
+        </div>
+        <div id="tape" class="tape" aria-label="纸带窗口"></div>
+        <p id="halt-message" class="halt-message"></p>
+      </section>
+
+      <section class="panel comparison">
+        <div class="section-heading"><h2>理论记录与本次运行</h2></div>
+        <dl id="comparison-list" class="comparison-list"></dl>
+      </section>
+
+      <details class="panel trace-panel">
+        <summary>查看最近轨迹（默认保留 200 步）</summary>
+        <ol id="trace" class="trace"></ol>
+      </details>
+    </main>
+    <script>
+      window.BUSY_BEAVER_CONFIG = {
+        defaultMachine: {{ default_machine|tojson }},
+        defaultMaxSteps: {{ default_max_steps }},
+        maxServerSteps: {{ max_server_steps }}
+      };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
