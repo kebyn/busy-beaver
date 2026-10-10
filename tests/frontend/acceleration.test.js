@@ -66,6 +66,22 @@ test("fixed speed applies beyond step 200; changing it pauses and preserves prog
   }
 });
 
+test("live speed changes reschedule once and preserve running or paused state", () => {
+  const { clock, send, last } = setup("busy_beaver_5", { speedMode: "fixed", interval: 2000 });
+  send("run"); clock.advance(1000);
+  send("speed", { settings: { speedMode: "fixed", interval: 50 } });
+  assert.equal(last().status, "running");
+  clock.advance(49);
+  assert.equal(last().steps_executed, 0);
+  clock.advance(1);
+  assert.equal(last().steps_executed, 1);
+  send("pause");
+  send("speed", { settings: { speedMode: "auto", interval: 1000 } });
+  clock.advance(5000);
+  assert.equal(last().steps_executed, 1);
+  assert.equal(last().status, "paused");
+});
+
 test("fast batches yield at 10 ms, refresh at 100 ms, and process pause/step/resume", () => {
   const { clock, send, last, runner, frames } = setup("busy_beaver_5", { executionMode: "until-halt" });
   for (let i = 0; i < 100; i++) send("step");

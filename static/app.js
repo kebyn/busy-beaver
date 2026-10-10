@@ -23,6 +23,7 @@ function updateButtons() {
   $("single-step").disabled = !ready || failed || !settingsValid || terminal;
   $("pause").disabled = !ready || failed;
   $("reset").disabled = !ready || failed;
+  updateSettingsControls();
 }
 
 function fatal(message) {
@@ -50,6 +51,7 @@ function drawTape(data) {
     return cell;
   });
   $("tape").replaceChildren(...cells);
+  $("tape").scrollLeft = ($("tape").scrollWidth - $("tape").clientWidth) / 2;
 }
 
 function drawTrace(data) {
@@ -151,10 +153,10 @@ function reset() {
   } catch (error) { setText("settings-error", error.message); }
 }
 
-function configure() {
+function configure(type = "configure") {
   if (!ready || failed) return;
   try {
-    send("configure", { settings: settings() });
+    send(type, { settings: settings() });
     settingsValid = true;
     setText("settings-error", "");
   } catch (error) {
@@ -170,8 +172,12 @@ $("pause").addEventListener("click", () => send("pause"));
 $("single-step").addEventListener("click", () => send("step"));
 $("reset").addEventListener("click", reset);
 function updateSettingsControls() {
-  maxStepsInput.disabled = executionMode.value === "until-halt";
-  $("speed").disabled = speedMode.value !== "fixed";
+  const locked = !ready || failed;
+  machineSelect.disabled = locked;
+  executionMode.disabled = locked;
+  speedMode.disabled = locked;
+  maxStepsInput.disabled = locked || executionMode.value === "until-halt";
+  $("speed").disabled = locked || speedMode.value !== "fixed";
 }
 
 machineSelect.addEventListener("change", () => {
@@ -180,13 +186,12 @@ machineSelect.addEventListener("change", () => {
   updateSettingsControls();
   reset();
 });
-for (const control of [executionMode, speedMode]) {
-  control.addEventListener("change", () => { updateSettingsControls(); configure(); });
-}
-maxStepsInput.addEventListener("input", configure);
+executionMode.addEventListener("change", () => configure());
+speedMode.addEventListener("change", () => configure("speed"));
+maxStepsInput.addEventListener("input", () => configure());
 $("speed").addEventListener("input", (event) => {
   setText("speed-value", event.target.value);
-  configure();
+  configure("speed");
 });
 
 async function start() {
@@ -198,7 +203,14 @@ async function start() {
     if (!Array.isArray(data.machines) || data.machines.length !== 4) throw new Error("机器数据不完整。");
     machines = Object.fromEntries(data.machines.map((machine) => [machine.id, machine]));
     for (const option of machineSelect.options) {
-      if (!machines[option.value]?.transitions) throw new Error("机器数据缺少转移表。");
+      const machine = machines[option.value];
+      if (!machine || !Number.isInteger(machine.state_count) || machine.state_count < 2 || machine.state_count > 5 ||
+          typeof machine.start_state !== "string" || !machine.transitions ||
+          typeof machine.transitions !== "object" || Array.isArray(machine.transitions) ||
+          !Number.isSafeInteger(machine.theoretical_steps) || machine.theoretical_steps < 0 ||
+          !Number.isSafeInteger(machine.theoretical_ones) || machine.theoretical_ones < 0) {
+        throw new Error("机器数据缺少有效的状态、转移表或理论记录。");
+      }
     }
     worker = new Worker(new URL("./simulation-worker.js", import.meta.url), { type: "module" });
     worker.onerror = (event) => { event.preventDefault(); fatal(`Worker 启动或执行失败：${event.message}`); };

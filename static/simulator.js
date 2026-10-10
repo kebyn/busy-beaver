@@ -167,7 +167,12 @@ export class Runner {
     if (runId !== this.runId || commandId <= this.commandId || !this.sim) return;
     this.commandId = commandId;
     try {
-      if (type === "configure") {
+      if (type === "speed") {
+        this.cancel();
+        this.configure({ ...this.settings, speedMode: message.settings.speedMode, interval: message.settings.interval });
+        this.status = this.stoppedStatus(this.status);
+        if (this.status === "running") this.schedule();
+      } else if (type === "configure") {
         this.cancel();
         this.configure(message.settings);
         this.status = this.stoppedStatus(this.sim.steps ? "paused" : "idle");

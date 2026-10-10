@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 
 export const reference = JSON.parse(execFileSync("uv", ["run", "python", "-m", "tests.frontend.reference"], {
-  cwd: new URL("../../", import.meta.url), maxBuffer: 16 * 1024 * 1024, encoding: "utf8",
+  cwd: new URL("../../", import.meta.url), maxBuffer: 64 * 1024 * 1024, encoding: "utf8",
 }));
 
 export class FakeClock {
