@@ -1,4 +1,14 @@
 export const TRACE_LIMIT = 200;
+export const MAX_LIMITED_STEPS = 1_000_000;
+export const HALT_GUARD_STEPS = 50_000_000;
+export const BATCH_MS = 10;
+export const FRAME_MS = 100;
+
+export function stepDelay(stateCount, steps, settings) {
+  if (settings.speedMode === "fixed") return settings.interval;
+  if (stateCount <= 3 || steps < 5) return 1000;
+  return steps < 100 ? 50 : 0;
+}
 
 // Execution state is independent of the bounded trace. Reuse ring entries so
 // long runs do not allocate a new object on every transition.
@@ -86,25 +96,39 @@ export class Runner {
   }
 
   configure(settings) {
-    if (!Number.isInteger(settings.maxSteps) || settings.maxSteps < 0 || settings.maxSteps > 1_000_000) {
+    const executionMode = settings.executionMode ?? "limited";
+    const speedMode = settings.speedMode ?? "auto";
+    if (!["limited", "until-halt"].includes(executionMode) || !["auto", "fixed"].includes(speedMode)) {
+      throw new Error("无效的执行模式或速度模式。");
+    }
+    if (!Number.isInteger(settings.maxSteps) || settings.maxSteps < 0 || settings.maxSteps > MAX_LIMITED_STEPS) {
       throw new Error("最大步数必须是 0 到 1,000,000 之间的整数。");
     }
     if (!Number.isInteger(settings.interval) || settings.interval < 50 || settings.interval > 2000) {
       throw new Error("固定速度必须在每步 50 到 2,000 毫秒之间。");
     }
-    this.settings = { ...settings };
+    this.settings = { ...settings, executionMode, speedMode };
+    this.limit = executionMode === "until-halt" ? HALT_GUARD_STEPS : settings.maxSteps;
   }
 
   stoppedStatus(fallback = "paused") {
     if (this.sim.error) return "error";
     if (this.sim.halted) return "halted";
-    if (this.sim.steps >= this.settings.maxSteps) return "limit";
+    if (this.sim.steps >= this.limit) return "limit";
     return fallback;
   }
 
   publish() {
+    const now = this.clock.now();
+    const elapsed = now - this.lastFrameAt;
+    if (elapsed > 0) this.rate = (this.sim.steps - this.lastFrameSteps) * 1000 / elapsed;
+    this.lastFrameAt = now;
+    this.lastFrameSteps = this.sim.steps;
     this.emit({ type: "snapshot", runId: this.runId, commandId: this.commandId,
-      sequence: ++this.sequence, status: this.status, limit: this.settings.maxSteps,
+      sequence: ++this.sequence, status: this.status, limit: this.limit,
+      executionMode: this.settings.executionMode,
+      delay: stepDelay(this.sim.machine.state_count, this.sim.steps, this.settings),
+      stepsPerSecond: this.status === "running" ? this.rate : 0,
       ...this.sim.snapshot() });
   }
 
@@ -132,6 +156,9 @@ export class Runner {
       try {
         this.configure(message.settings);
         this.sim = new Simulator(message.machine);
+        this.lastFrameAt = this.clock.now();
+        this.lastFrameSteps = 0;
+        this.rate = 0;
         this.status = this.stoppedStatus("idle");
         this.publish();
       } catch (error) { this.fail(error); }
@@ -153,23 +180,34 @@ export class Runner {
         }
       } else if (type === "run") {
         this.status = this.stoppedStatus("running");
-        if (this.status === "running" && this.timer === null) this.schedule();
+        if (this.status === "running" && this.timer === null) {
+          this.lastFrameAt = this.clock.now();
+          this.lastFrameSteps = this.sim.steps;
+          this.rate = 0;
+          this.schedule();
+        }
       }
       this.publish();
     } catch (error) { this.fail(error); }
   }
 
   schedule() {
-    this.timer = this.clock.setTimeout(() => this.tick(), this.settings.interval);
+    this.timer = this.clock.setTimeout(() => this.tick(),
+      stepDelay(this.sim.machine.state_count, this.sim.steps, this.settings));
   }
 
   tick() {
     this.timer = null;
     if (this.status !== "running") return;
     try {
-      this.sim.step();
+      const fast = stepDelay(this.sim.machine.state_count, this.sim.steps, this.settings) === 0;
+      const deadline = this.clock.now() + BATCH_MS;
+      do {
+        this.sim.step();
+        if (!fast || this.sim.halted || this.sim.steps >= this.limit) break;
+      } while (this.clock.now() < deadline);
       this.status = this.stoppedStatus("running");
-      this.publish();
+      if (!fast || this.status !== "running" || this.clock.now() - this.lastFrameAt >= FRAME_MS) this.publish();
       if (this.status === "running") this.schedule();
     } catch (error) { this.fail(error); }
   }

@@ -28,12 +28,26 @@
             </select>
           </label>
           <label>
+            <span>执行模式</span>
+            <select id="execution-mode">
+              <option value="limited">限定步数</option>
+              <option value="until-halt">运行到停机</option>
+            </select>
+          </label>
+          <label>
             <span>最大步数</span>
             <input id="max-steps" type="number" min="0" max="{{ max_server_steps }}" value="{{ default_max_steps }}" inputmode="numeric">
           </label>
           <label>
-            <span>播放速度</span>
-            <input id="speed" type="range" min="50" max="2000" value="1000" step="50">
+            <span>速度模式</span>
+            <select id="speed-mode">
+              <option value="auto">自动加速</option>
+              <option value="fixed">固定速度</option>
+            </select>
+          </label>
+          <label>
+            <span>固定速度</span>
+            <input id="speed" type="range" min="50" max="2000" value="1000" step="50" disabled>
             <small><output id="speed-value">1000</output> 毫秒/步</small>
           </label>
         </div>
@@ -61,6 +75,8 @@
         </div>
         <div id="tape" class="tape" aria-label="纸带窗口"></div>
         <p id="halt-message" class="halt-message"></p>
+        <p id="playback-info" class="machine-note"></p>
+        <progress id="progress" max="1000" value="0" aria-label="相对执行上限的进度"></progress>
       </section>
 
       <section class="panel comparison">

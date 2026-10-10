@@ -28,7 +28,7 @@ function setup(machine = reference.machines.busy_beaver_3, maxSteps = 1000) {
   const runner = new Runner((frame) => frames.push(frame), clock);
   let commandId = 0;
   const send = (type, extra = {}) => runner.handle({ type, runId: 1, commandId: ++commandId, ...extra });
-  send("init", { machine, settings: { maxSteps, interval: 1000 } });
+  send("init", { machine, settings: { maxSteps, interval: 1000, speedMode: "fixed" } });
   return { runner, frames, clock, send, last: () => frames.at(-1) };
 }
 
@@ -64,10 +64,10 @@ test("limits pause in place, can be raised, and never undo the tape", () => {
   send("run"); clock.advance(2000);
   assert.equal(last().status, "limit");
   assert.equal(last().halted, false);
-  send("configure", { settings: { maxSteps: 1, interval: 50 } });
+  send("configure", { settings: { maxSteps: 1, interval: 50, speedMode: "fixed" } });
   send("step");
   assert.equal(last().steps_executed, 2);
-  send("configure", { settings: { maxSteps: 14, interval: 50 } });
+  send("configure", { settings: { maxSteps: 14, interval: 50, speedMode: "fixed" } });
   assert.equal(last().status, "paused");
   send("run"); clock.advance(600);
   assert.equal(last().status, "halted");

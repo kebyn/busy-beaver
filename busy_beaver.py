@@ -162,10 +162,7 @@ MACHINES: dict[str, Machine] = {
         ),
         theoretical_steps=47_176_870,
         theoretical_ones=4_098,
-        description=(
-            "Marxen–Buntrock record machine; the full run is intentionally "
-            "not the web default."
-        ),
+        description="Marxen–Buntrock record machine (47,176,870 steps, 4,098 final ones).",
     ),
 }
 

@@ -2,6 +2,8 @@ const config = window.BUSY_BEAVER_CONFIG;
 const $ = (id) => document.getElementById(id);
 const machineSelect = $("machine-select");
 const maxStepsInput = $("max-steps");
+const executionMode = $("execution-mode");
+const speedMode = $("speed-mode");
 let machines = {};
 let worker;
 let result = null;
@@ -91,7 +93,9 @@ function draw(data) {
     idle: "空白纸带已就绪。点击运行或单步开始。",
     running: "正在执行，可随时暂停或单步。",
     paused: "已暂停，运行将从当前纸带继续；单步只执行一次转移。",
-    limit: `未停机：达到最大步数（${data.limit.toLocaleString()} 步）。提高上限后可继续。`,
+    limit: data.executionMode === "until-halt"
+      ? `未停机：达到 50,000,000 步保护上限。`
+      : `未停机：达到最大步数（${data.limit.toLocaleString()} 步）。提高上限或选择运行到停机后可继续。`,
     halted: `已执行到 H，真实停机：${data.steps_executed.toLocaleString()} 步，${data.ones.toLocaleString()} 个 1。`,
     error: `执行终止：${data.error}`,
   };
@@ -100,15 +104,23 @@ function draw(data) {
   $("result-badge").className = `badge ${tone}`;
   $("halt-message").className = `halt-message ${tone}`;
   drawComparison(machines[data.machine], data);
+  const speed = data.status === "running"
+    ? data.delay === 0 ? `高速计算，约 ${Math.round(data.stepsPerSecond).toLocaleString()} 步/秒` : `${data.delay.toLocaleString()} 毫秒/步`
+    : labels[data.status];
+  const bound = data.executionMode === "until-halt" ? "保护上限" : "步数上限";
+  setText("playback-info", `${speed} · 已执行 ${data.steps_executed.toLocaleString()} / ${bound} ${data.limit.toLocaleString()} 步`);
+  $("progress").max = Math.max(1, data.limit);
+  $("progress").value = Math.min(data.steps_executed, data.limit);
   updateButtons();
 }
 
 function settings() {
-  const maxSteps = maxStepsInput.value.trim() === "" ? NaN : Number(maxStepsInput.value);
+  const maxSteps = executionMode.value === "until-halt" ? config.defaultMaxSteps
+    : maxStepsInput.value.trim() === "" ? NaN : Number(maxStepsInput.value);
   if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > config.maxServerSteps) {
     throw new Error(`最大步数必须是 0 到 ${config.maxServerSteps.toLocaleString()} 之间的整数。`);
   }
-  return { maxSteps, interval: Number($("speed").value) };
+  return { maxSteps, interval: Number($("speed").value), executionMode: executionMode.value, speedMode: speedMode.value };
 }
 
 function send(type, extra = {}) {
@@ -130,7 +142,9 @@ function reset() {
     updateButtons();
     setText("settings-error", "");
     const machine = machines[machineSelect.value];
-    setText("machine-note", machine.state_count === 3
+    setText("machine-note", machine.state_count === 5
+      ? "五状态默认运行到停机，设 50,000,000 步保护上限。自动加速会逐次执行全部转移，高速画面约每 100 毫秒刷新。"
+      : machine.state_count === 3
       ? "当前为三状态得分冠军：14 步留下 6 个 1；21 步的时间冠军是另一台机器。"
       : `理论纪录：${machine.theoretical_steps.toLocaleString()} 步，${machine.theoretical_ones.toLocaleString()} 个 1。`);
     send("init", { machine, settings: nextSettings });
@@ -155,7 +169,20 @@ $("run").addEventListener("click", () => send("run"));
 $("pause").addEventListener("click", () => send("pause"));
 $("single-step").addEventListener("click", () => send("step"));
 $("reset").addEventListener("click", reset);
-machineSelect.addEventListener("change", () => { maxStepsInput.value = config.defaultMaxSteps; reset(); });
+function updateSettingsControls() {
+  maxStepsInput.disabled = executionMode.value === "until-halt";
+  $("speed").disabled = speedMode.value !== "fixed";
+}
+
+machineSelect.addEventListener("change", () => {
+  maxStepsInput.value = config.defaultMaxSteps;
+  executionMode.value = machines[machineSelect.value]?.state_count === 5 ? "until-halt" : "limited";
+  updateSettingsControls();
+  reset();
+});
+for (const control of [executionMode, speedMode]) {
+  control.addEventListener("change", () => { updateSettingsControls(); configure(); });
+}
 maxStepsInput.addEventListener("input", configure);
 $("speed").addEventListener("input", (event) => {
   setText("speed-value", event.target.value);
@@ -179,7 +206,7 @@ async function start() {
     worker.onmessage = ({ data: snapshot }) => {
       // Worker commands are FIFO. Reject frames predating the latest requested
       // command, including already queued playback frames and previous runs.
-      if (snapshot.runId !== runId || snapshot.commandId < commandId) return;
+      if (failed || snapshot.runId !== runId || snapshot.commandId < commandId) return;
       if (snapshot.type === "failure") { fatal(snapshot.error); return; }
       if (snapshot.type !== "snapshot" || snapshot.sequence <= sequence) return;
       clearTimeout(startupTimer);
