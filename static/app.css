@@ -30,6 +30,9 @@ small { color: var(--muted); font-weight: 400; }
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
 button { cursor: pointer; border: 1px solid var(--line); background: white; color: var(--ink); padding: 10px 17px; border-radius: 999px; font-weight: 750; }
 button:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.error, .halt-message.error { color: #b52b35; }
+.badge.error { color: #b52b35; background: #fff0f0; }
 button.primary { background: var(--accent); color: white; border-color: var(--accent); }
 .machine-note { color: var(--muted); min-height: 22px; margin: 18px 0 0; font-size: 14px; }
 .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }

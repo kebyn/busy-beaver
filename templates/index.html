@@ -33,16 +33,17 @@
           </label>
           <label>
             <span>播放速度</span>
-            <input id="speed" type="range" min="50" max="1000" value="250" step="50">
-            <small><output id="speed-value">250</output> 毫秒/步</small>
+            <input id="speed" type="range" min="50" max="2000" value="1000" step="50">
+            <small><output id="speed-value">1000</output> 毫秒/步</small>
           </label>
         </div>
         <div class="button-row">
-          <button id="run" class="primary">运行</button>
-          <button id="pause">暂停</button>
-          <button id="single-step">单步</button>
-          <button id="reset">重置</button>
+          <button id="run" class="primary" disabled>运行 / 继续</button>
+          <button id="pause" disabled>暂停</button>
+          <button id="single-step" disabled>单步</button>
+          <button id="reset" disabled>重置</button>
         </div>
+        <p id="settings-error" class="error" role="alert"></p>
         <p id="machine-note" class="machine-note" role="note"></p>
       </section>
 
@@ -79,6 +80,6 @@
         maxServerSteps: {{ max_server_steps }}
       };
     </script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>

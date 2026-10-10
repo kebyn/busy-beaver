@@ -1,131 +1,195 @@
-(() => {
-  const config = window.BUSY_BEAVER_CONFIG;
-  const $ = (id) => document.getElementById(id);
-  const machineSelect = $("machine-select");
-  const maxStepsInput = $("max-steps");
-  const traceLimit = 200;
-  let machines = {};
-  let result = null;
-  let playing = false;
-  let timer = null;
-  let frame = 0;
+const config = window.BUSY_BEAVER_CONFIG;
+const $ = (id) => document.getElementById(id);
+const machineSelect = $("machine-select");
+const maxStepsInput = $("max-steps");
+let machines = {};
+let worker;
+let result = null;
+let ready = false;
+let failed = false;
+let runId = 0;
+let commandId = 0;
+let sequence = 0;
+let startupTimer;
+let settingsValid = true;
 
-  function setText(id, value) { $(id).textContent = value; }
+function setText(id, value) { $(id).textContent = value; }
 
-  function drawTape(data) {
-    const tape = $("tape");
-    tape.replaceChildren();
-    const entries = Object.entries(data.tape_window || {}).map(([position, value]) => [Number(position), value]);
-    entries.forEach(([position, value]) => {
-      const cell = document.createElement("span");
-      cell.className = "cell" + (value ? " one" : "") + (position === data.head_position ? " head" : "");
-      cell.innerHTML = `<span class="position">${position}</span>${value}`;
-      tape.appendChild(cell);
-    });
-  }
+function updateButtons() {
+  const terminal = ["halted", "limit", "error"].includes(result?.status);
+  $("run").disabled = !ready || failed || !settingsValid || terminal || result?.status === "running";
+  $("single-step").disabled = !ready || failed || !settingsValid || terminal;
+  $("pause").disabled = !ready || failed;
+  $("reset").disabled = !ready || failed;
+}
 
-  function drawTrace(data, visible = data.trace || []) {
-    const list = $("trace");
-    list.replaceChildren();
-    visible.forEach((step) => {
-      const item = document.createElement("li");
-      item.textContent = `#${step.step}: ${step.state} @ ${step.position} 读 ${step.read} → 写 ${step.write}，${step.direction}，${step.next_state}`;
-      list.appendChild(item);
-    });
-  }
+function fatal(message) {
+  clearTimeout(startupTimer);
+  failed = true;
+  ready = false;
+  worker?.terminate();
+  setText("result-badge", "执行错误");
+  $("result-badge").dataset.status = "error";
+  setText("halt-message", message);
+  $("halt-message").className = "halt-message error";
+  updateButtons();
+}
 
-  function drawComparison(machine, data) {
-    const expected = machine ? `理论 ${machine.theoretical_steps.toLocaleString()} 步` : "—";
-    const expectedOnes = machine ? `理论 ${machine.theoretical_ones.toLocaleString()} 个` : "—";
-    $("comparison-list").innerHTML = `
-      <div><dt>理论步数</dt><dd>${expected}</dd></div>
-      <div><dt>理论最终 1 数量</dt><dd>${expectedOnes}</dd></div>
-      <div><dt>本次步数</dt><dd>${data ? data.steps_executed.toLocaleString() : "—"}</dd></div>
-      <div><dt>本次最终 1 数量</dt><dd>${data ? data.ones.toLocaleString() : "—"}</dd></div>`;
-  }
-
-  function draw(data, visibleTrace = data.trace || []) {
-    result = data;
-    setText("state", data.state);
-    setText("steps", data.steps_executed.toLocaleString());
-    setText("head", data.head_position);
-    setText("ones", data.ones.toLocaleString());
-    drawTape(data);
-    drawTrace(data, visibleTrace);
-    const badge = $("result-badge");
-    const message = $("halt-message");
-    badge.className = "badge";
-    message.className = "halt-message";
-    if (data.halted) {
-      badge.textContent = "已停机";
-      badge.classList.add("good");
-      message.textContent = `已停机：${data.halt_reason}。`;
-      message.classList.add("good");
-    } else if (data.halt_reason === "maximum step limit reached") {
-      badge.textContent = "达到上限";
-      badge.classList.add("limit");
-      message.textContent = `未停机：达到最大步数（${data.steps_executed.toLocaleString()} 步）。`;
-      message.classList.add("limit");
-    } else {
-      badge.textContent = "执行结束";
-      message.textContent = `执行结束：${data.halt_reason}。`;
-    }
-    drawComparison(machines[machineSelect.value], data);
-  }
-
-  function updateMachineNote() {
-    const machine = machines[machineSelect.value];
-    if (!machine) return;
-    const longRun = machine.state_count === 5
-      ? "5 状态记录机完整运行约 4,700 万步；网页默认只演示前 1,000 步。"
-      : machine.description;
-    $("machine-note").textContent = `${longRun} 理论记录：${machine.theoretical_steps.toLocaleString()} 步、${machine.theoretical_ones.toLocaleString()} 个 1。`;
-    drawComparison(machine, result);
-  }
-
-  async function simulate(maxSteps = Number(maxStepsInput.value)) {
-    stop();
-    if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > config.maxServerSteps) {
-      $("halt-message").textContent = `最大步数必须在 0 到 ${config.maxServerSteps.toLocaleString()} 之间。`;
-      return;
-    }
-    const response = await fetch("/api/simulate", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ machine: machineSelect.value, max_steps: maxSteps, trace_limit: traceLimit })
-    });
-    const data = await response.json();
-    if (!response.ok) { $("halt-message").textContent = data.error || "请求失败"; return; }
-    frame = 0;
-    draw(data, []);
-    if (data.trace.length) playTrace(data);
-  }
-
-  function playTrace(data) {
-    playing = true;
-    const tick = () => {
-      if (!playing || frame >= data.trace.length) { playing = false; return; }
-      const step = data.trace[frame++];
-      draw(data, data.trace.slice(0, frame));
-      setText("state", step.next_state === "H" ? "HALT" : step.next_state);
-      setText("steps", step.step.toLocaleString());
-      setText("head", step.next_position);
-      timer = setTimeout(tick, Number($("speed").value));
-    };
-    tick();
-  }
-
-  function stop() { playing = false; if (timer) clearTimeout(timer); timer = null; }
-
-  $("run").addEventListener("click", () => simulate());
-  $("pause").addEventListener("click", stop);
-  $("single-step").addEventListener("click", () => simulate(Math.min(1, Number(maxStepsInput.value))));
-  $("reset").addEventListener("click", () => { stop(); result = null; draw({ state: "A", steps_executed: 0, head_position: 0, ones: 0, tape_window: {}, trace: [], halted: false, halt_reason: "尚未运行" }, []); updateMachineNote(); });
-  machineSelect.addEventListener("change", () => { stop(); result = null; updateMachineNote(); });
-  $("speed").addEventListener("input", (event) => setText("speed-value", event.target.value));
-
-  fetch("/api/machines").then((response) => response.json()).then((data) => {
-    data.machines.forEach((machine) => { machines[machine.id] = machine; });
-    updateMachineNote();
-    draw({ state: "A", steps_executed: 0, head_position: 0, ones: 0, tape_window: {}, trace: [], halted: false, halt_reason: "尚未运行" }, []);
+function drawTape(data) {
+  const cells = data.tape_window.map(({ position, value }) => {
+    const cell = document.createElement("span");
+    cell.className = "cell" + (value ? " one" : "") + (position === data.head_position ? " head" : "");
+    cell.dataset.position = position;
+    cell.dataset.value = value;
+    const coordinate = document.createElement("span");
+    coordinate.className = "position";
+    coordinate.textContent = position;
+    cell.append(coordinate, String(value));
+    return cell;
   });
-})();
+  $("tape").replaceChildren(...cells);
+}
+
+function drawTrace(data) {
+  $("trace").replaceChildren(...data.trace.map((step) => {
+    const item = document.createElement("li");
+    item.textContent = `#${step.step}: ${step.state} @ ${step.position} 读 ${step.read} → 写 ${step.write}，${step.direction}，${step.next_state}`;
+    return item;
+  }));
+}
+
+function drawComparison(machine, data) {
+  const rows = [
+    ["理论步数纪录 S(n)", machine.theoretical_steps.toLocaleString()],
+    ["理论得分纪录 Σ(n)", machine.theoretical_ones.toLocaleString()],
+    ["本次已执行步数", data.steps_executed.toLocaleString()],
+    ["当前纸带 1 数量", data.ones.toLocaleString()],
+  ];
+  $("comparison-list").replaceChildren(...rows.map(([label, value]) => {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    const detail = document.createElement("dd");
+    term.textContent = label;
+    detail.textContent = value;
+    row.append(term, detail);
+    return row;
+  }));
+}
+
+function draw(data) {
+  result = data;
+  setText("state", data.state);
+  setText("steps", data.steps_executed.toLocaleString());
+  setText("head", data.head_position);
+  setText("ones", data.ones.toLocaleString());
+  drawTape(data);
+  drawTrace(data);
+  const labels = { idle: "尚未运行", running: "运行中", paused: "已暂停", limit: "达到上限", halted: "已停机", error: "执行错误" };
+  setText("result-badge", labels[data.status]);
+  $("result-badge").dataset.status = data.status;
+  const messages = {
+    idle: "空白纸带已就绪。点击运行或单步开始。",
+    running: "正在执行，可随时暂停或单步。",
+    paused: "已暂停，运行将从当前纸带继续；单步只执行一次转移。",
+    limit: `未停机：达到最大步数（${data.limit.toLocaleString()} 步）。提高上限后可继续。`,
+    halted: `已执行到 H，真实停机：${data.steps_executed.toLocaleString()} 步，${data.ones.toLocaleString()} 个 1。`,
+    error: `执行终止：${data.error}`,
+  };
+  setText("halt-message", messages[data.status]);
+  const tone = data.halted ? "good" : data.status === "limit" ? "limit" : data.status === "error" ? "error" : "";
+  $("result-badge").className = `badge ${tone}`;
+  $("halt-message").className = `halt-message ${tone}`;
+  drawComparison(machines[data.machine], data);
+  updateButtons();
+}
+
+function settings() {
+  const maxSteps = maxStepsInput.value.trim() === "" ? NaN : Number(maxStepsInput.value);
+  if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > config.maxServerSteps) {
+    throw new Error(`最大步数必须是 0 到 ${config.maxServerSteps.toLocaleString()} 之间的整数。`);
+  }
+  return { maxSteps, interval: Number($("speed").value) };
+}
+
+function send(type, extra = {}) {
+  if (!worker || failed) return;
+  worker.postMessage({ type, runId, commandId: ++commandId, ...extra });
+}
+
+function reset() {
+  if (failed) return;
+  try {
+    // Reset must remain usable while an invalid limit is being edited.
+    if (!settingsValid) maxStepsInput.value = config.defaultMaxSteps;
+    const nextSettings = settings();
+    ready = false;
+    settingsValid = true;
+    result = null;
+    runId++;
+    sequence = 0;
+    updateButtons();
+    setText("settings-error", "");
+    const machine = machines[machineSelect.value];
+    setText("machine-note", machine.state_count === 3
+      ? "当前为三状态得分冠军：14 步留下 6 个 1；21 步的时间冠军是另一台机器。"
+      : `理论纪录：${machine.theoretical_steps.toLocaleString()} 步，${machine.theoretical_ones.toLocaleString()} 个 1。`);
+    send("init", { machine, settings: nextSettings });
+  } catch (error) { setText("settings-error", error.message); }
+}
+
+function configure() {
+  if (!ready || failed) return;
+  try {
+    send("configure", { settings: settings() });
+    settingsValid = true;
+    setText("settings-error", "");
+  } catch (error) {
+    send("pause");
+    settingsValid = false;
+    setText("settings-error", error.message);
+  }
+  updateButtons();
+}
+
+$("run").addEventListener("click", () => send("run"));
+$("pause").addEventListener("click", () => send("pause"));
+$("single-step").addEventListener("click", () => send("step"));
+$("reset").addEventListener("click", reset);
+machineSelect.addEventListener("change", () => { maxStepsInput.value = config.defaultMaxSteps; reset(); });
+maxStepsInput.addEventListener("input", configure);
+$("speed").addEventListener("input", (event) => {
+  setText("speed-value", event.target.value);
+  configure();
+});
+
+async function start() {
+  updateButtons();
+  try {
+    const response = await fetch("/api/machines", { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error(`机器数据加载失败（HTTP ${response.status}）。`);
+    const data = await response.json();
+    if (!Array.isArray(data.machines) || data.machines.length !== 4) throw new Error("机器数据不完整。");
+    machines = Object.fromEntries(data.machines.map((machine) => [machine.id, machine]));
+    for (const option of machineSelect.options) {
+      if (!machines[option.value]?.transitions) throw new Error("机器数据缺少转移表。");
+    }
+    worker = new Worker(new URL("./simulation-worker.js", import.meta.url), { type: "module" });
+    worker.onerror = (event) => { event.preventDefault(); fatal(`Worker 启动或执行失败：${event.message}`); };
+    worker.onmessageerror = () => fatal("无法读取 Worker 执行结果，请刷新页面重试。");
+    worker.onmessage = ({ data: snapshot }) => {
+      // Worker commands are FIFO. Reject frames predating the latest requested
+      // command, including already queued playback frames and previous runs.
+      if (snapshot.runId !== runId || snapshot.commandId < commandId) return;
+      if (snapshot.type === "failure") { fatal(snapshot.error); return; }
+      if (snapshot.type !== "snapshot" || snapshot.sequence <= sequence) return;
+      clearTimeout(startupTimer);
+      sequence = snapshot.sequence;
+      ready = true;
+      draw(snapshot);
+    };
+    startupTimer = setTimeout(() => fatal("Worker 启动超时，请刷新页面重试。"), 5000);
+    reset();
+  } catch (error) { fatal(`无法初始化模拟器：${error.message}`); }
+}
+
+start();
