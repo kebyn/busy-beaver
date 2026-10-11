@@ -1,9 +1,12 @@
-# 忙碌海狸 Flask 演示
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个独立的 Flask 项目，演示经典二符号忙碌海狸图灵机。项目包含
-2、3、4、5 状态机器注册表、稀疏纸带模拟器、JSON API 和浏览器动画界面。
+# Busy Beaver Flask Demo
 
-## 运行
+A standalone Flask project demonstrating classic two-symbol Busy Beaver Turing machines.
+It includes a registry of 2-, 3-, 4-, and 5-state machines, a sparse-tape simulator,
+a JSON API, and an animated browser interface.
+
+## Running
 
 ```bash
 uv sync
@@ -11,35 +14,47 @@ uv run python -m unittest discover -v
 uv run flask --app busy_beaver web
 ```
 
-启动后打开 <http://127.0.0.1:5000/>。默认选择 3 状态机器，限定最多 1,000 步。
-切换到 **5 状态时，网页默认选择“运行到停机”**，也可以手动改为“限定步数”。
-完整执行这台记录机需要 47,176,870 次真实转移，停机后纸带留下 4,098 个 `1`。
+After starting the server, open <http://127.0.0.1:5000/>. The default is the 3-state machine
+with a limit of 1,000 steps. **Switching to the 5-state machine selects Run until halt
+(运行到停机) by default**; you can manually select Step limit (限定步数) instead.
+A complete run of this record machine executes 47,176,870 actual transitions and leaves
+4,098 `1` symbols on the tape when it halts.
 
-## 网页控制
+## Web Controls
 
-- **单步**：从当前纸带执行一次转移，连续点击连续推进；播放中点击会先暂停，再执行一步。
-- **运行 / 继续、暂停**：暂停保留纸带和进度，继续从当前位置执行。
-- **重置、切换机器**：清空纸带、轨迹和进度。切换机器时恢复 1,000 步的限定值；五状态默认采用运行到停机模式，其他机器默认限定步数。
-- **执行模式、最大步数**：修改时先暂停并保留进度。提高上限可继续；降低到已执行步数以下会停止推进，已执行的转移不会撤销。限定步数接受 0～1,000,000 的整数。
-- **自动加速**（默认）：2、3 状态每秒一步；4、5 状态前 5 步每秒一步，第 6～100 步每步 50 毫秒，随后进入高速计算。
-- **固定速度**：所有阶段均按每步 50～2,000 毫秒执行，默认值 1,000 毫秒。播放中修改速度会立即重新计时；暂停时修改速度不会开始运行。
+- **Step (单步)**: Execute one transition from the current tape. Repeated clicks keep advancing; clicking during playback first pauses execution, then performs one step.
+- **Run / Resume (运行 / 继续), Pause (暂停)**: Pausing preserves the tape and progress. Resuming continues from the current position.
+- **Reset (重置), machine selection (机器)**: Clear the tape, trace, and progress. Switching machines restores the step limit to 1,000; the 5-state machine defaults to Run until halt, while the others default to Step limit.
+- **Execution mode (执行模式), maximum steps (最大步数)**: Changing either first pauses execution and preserves progress. Raising the limit allows execution to continue; lowering it below the number of completed steps stops further execution without undoing any transitions. Step limit accepts integers from 0 to 1,000,000.
+- **Automatic acceleration (自动加速)**, the default: The 2- and 3-state machines run at one step per second. The 4- and 5-state machines run their first 5 steps at one step per second, steps 6–100 at 50 milliseconds per step, and then switch to high-speed computation.
+- **Fixed speed (固定速度)**: All phases run at 50–2,000 milliseconds per step, with a default of 1,000 milliseconds. Changing the speed during playback immediately restarts the timing interval; changing it while paused does not start execution.
 
-网页从 `/api/machines` 取得真实转移表，由浏览器 Web Worker 持续执行。
-高速阶段每批计算约 10 毫秒，批次之间处理暂停等命令；画面约每 100 毫秒更新，停机时立即显示最终结果。
-每次刷新中的纸带、状态、读写头、步数、`1` 数量和轨迹均来自同一份快照。
-高速画面不会逐帧展示每次转移，但计算会执行每次转移。
+The page fetches the actual transition tables from `/api/machines`, and a browser Web Worker
+executes them continuously. During high-speed computation, each batch runs for about
+10 milliseconds, with commands such as pause handled between batches. The display updates
+about every 100 milliseconds and shows the final result immediately when the machine halts.
+Each update uses a single snapshot for the tape, state, read/write head, step count,
+number of `1` symbols, and trace. The high-speed display does not show every transition
+as a separate frame, but the computation executes every transition.
 
-最近轨迹固定保留 200 步，超过 200 步仍继续执行。“运行到停机”有独立的
-50,000,000 步保护上限；只有实际进入 `H` 才显示“已停机”，触及上限会明确显示“未停机”。
-页面分别显示尚未运行、运行中、已暂停、达到上限、已停机和执行错误。
-机器数据或 Worker 初始化失败时禁用执行按钮并显示错误；异常转移会终止当前运行，可重置或切换机器。
+The recent trace retains a fixed 200 steps; execution continues beyond 200 steps.
+Run until halt has a separate safety limit of 50,000,000 steps. The page shows Halted
+(已停机) only after the machine actually enters `H`; reaching the limit explicitly shows
+Not halted (未停机). The page distinguishes Not started (尚未运行), Running (运行中),
+Paused (已暂停), Limit reached (达到上限), Halted (已停机), and Execution error (执行错误).
+If loading machine data or initializing the Worker fails, execution buttons are disabled
+and an error is shown. An invalid transition terminates the current run; you can reset
+or switch machines.
 
-完成时间取决于设备和浏览器调度，后台标签页也可能被限速。进度条表示已执行步数相对于所选上限，
-不是对剩余耗时的预测。实测环境和耗时见 [验证记录](docs/verification.md)。
+Completion time depends on the device and browser scheduling; background tabs may also
+be throttled. The progress bar shows completed steps relative to the selected limit,
+not an estimate of the remaining time. See the [verification record](docs/verification.md)
+for the measured environment and timings.
 
-## 命令行
+## Command Line
 
-也可以直接运行命令行模拟器，并用 `--trace-limit` 控制轨迹保存数量：
+You can also run the command-line simulator directly and use `--trace-limit` to control
+the number of trace entries retained:
 
 ```bash
 uv run python -m busy_beaver --machine busy_beaver_5 --max-steps 1000 --trace-limit 200
@@ -47,20 +62,24 @@ uv run python -m busy_beaver --machine busy_beaver_5 --max-steps 1000 --trace-li
 
 ## API
 
-- `GET /api/machines` 返回四台机器、转移表及理论记录元数据。
-- `POST /api/simulate` 接受 `machine`、`max_steps` 和 `trace_limit`，默认三状态、1,000 步、200 条轨迹；接受的上限分别为 1,000,000 步和 10,000 条轨迹，超出范围返回 HTTP 400。
+- `GET /api/machines` returns the four machines, their transition tables, and theoretical record metadata.
+- `POST /api/simulate` accepts `machine`, `max_steps`, and `trace_limit`, defaulting to the 3-state machine, 1,000 steps, and 200 trace entries. The accepted upper limits are 1,000,000 steps and 10,000 trace entries, respectively; out-of-range values return HTTP 400.
 
-API 和 CLI 的参数与默认值保持不变。CLI 默认三状态、最多 1,000 步，默认保存完整轨迹，
-可通过 `--trace-limit` 限制内存用量。网页运行不调用 `/api/simulate`，其完整执行由 Worker 承担，
-不会放宽服务端的安全上限。
+The API and CLI parameters and defaults remain unchanged. The CLI defaults to the 3-state
+machine, at most 1,000 steps, and retaining the complete trace. Use `--trace-limit` to
+limit memory usage. Browser execution does not call `/api/simulate`; the Worker handles
+complete runs without raising the server's safety limits.
 
-3 状态忙碌海狸存在两个分别优化的经典记录：得分冠军在 14 步留下 6 个
-`1`，运行时间冠军在 21 步留下 5 个 `1`。注册表同时展示 `S(3)=21` 和
-`Σ(3)=6` 这两个理论记录，模拟器保持真实转移表和纸带结果一致。
+There are two classic 3-state Busy Beaver records optimized for different goals:
+the score champion leaves 6 `1` symbols after 14 steps, while the runtime champion
+leaves 5 `1` symbols after 21 steps. The registry displays both theoretical records,
+`S(3)=21` and `Σ(3)=6`, while the simulator keeps its tape results consistent with the
+actual transition table.
 
-## 测试
+## Tests
 
-Python 运行环境继续使用 uv。前端开发测试另外需要 Node.js 22 或更新版本及 npm；运行 Flask 应用不需要 Node.js。
+The Python environment continues to use uv. Frontend development tests also require
+Node.js 22 or later and npm; running the Flask application does not require Node.js.
 
 ```bash
 uv sync
@@ -71,8 +90,22 @@ npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-`npm test` 包含逐步对照 Python、控制命令、可控时钟速度规则和五状态完整执行。
-浏览器测试自行启动 `127.0.0.1:5057` 的 Flask 服务，验证真实 Worker 和页面交互，
-包括完整五状态播放、加载失败、旧消息隔离及高速暂停响应；该端口需空闲。
-性能用例输出 `BROWSER_FULL_RUN` 和 `BROWSER_PAUSE` 测量值，目标是前台暂停响应不超过 200 毫秒。
-浏览器调度和主机负载会影响结果，不保证所有设备达到同一完成时间。
+`npm test` covers step-by-step comparisons with Python, control commands, speed rules
+using a controllable clock, and a complete 5-state run. Browser tests start their own
+Flask server at `127.0.0.1:5057` and verify the actual Worker and page interactions,
+including complete 5-state playback, loading failures, isolation of stale messages,
+and pause response during high-speed execution. That port must be available.
+Performance cases output `BROWSER_FULL_RUN` and `BROWSER_PAUSE` measurements, with a
+target foreground pause response of no more than 200 milliseconds. Browser scheduling
+and host load affect the results; the same completion time is not guaranteed on every device.
+
+## Documentation
+
+English is the primary language for maintaining documentation. Whenever documentation
+is added or changed, provide or update the Chinese version at the same time. Default
+document paths contain English; Chinese versions use the `.zh-CN.md` suffix.
+
+| English (primary) | Simplified Chinese |
+| --- | --- |
+| [README.md](README.md) | [README.zh-CN.md](README.zh-CN.md) |
+| [docs/verification.md](docs/verification.md) | [docs/verification.zh-CN.md](docs/verification.zh-CN.md) |
