@@ -1,63 +1,78 @@
-# 单步与自动加速验证记录
+[English](verification.md) | [简体中文](verification.zh-CN.md)
 
-验证日期：2026-10-10。以下为本次实际执行结果。
+# Verification Record: Single Stepping and Automatic Acceleration
 
-## 环境
+Verification date: 2026-10-10. The following is a historical record of results measured on that date.
 
-- Debian GNU/Linux 13，x86_64 容器；CPU 型号 AMD EPYC 9475F，`nproc` 报告 6 个可用 CPU。
-- Node.js 24.21.0、uv 0.12.24、Playwright 1.64.0。
-- Chromium 156.0.8078.4；有窗口测试通过 Xvfb 运行，页面可见性为 `visible`，视口 1280 × 1000。
-- 单个浏览器测试进程；性能测量期间没有并行执行其他模拟测试。
+## Environment
 
-## 自动化结果
+- Debian GNU/Linux 13 in an x86_64 container; AMD EPYC 9475F CPU, with `nproc` reporting 6 available CPUs.
+- Node.js 24.21.0, uv 0.12.24, and Playwright 1.64.0.
+- Chromium 156.0.8078.4; headed tests ran through Xvfb with page visibility reported as `visible` and a 1280 × 1000 viewport.
+- A single browser test process; no other simulation tests ran in parallel during performance measurements.
 
-| 检查 | 结果 |
+## Automated Results
+
+| Check | Result |
 | --- | --- |
-| `uv run python -m unittest discover -v` | 原有 6 项全部通过 |
-| `npm test` | 16 项前端核心测试通过，含可控时钟与五状态完整执行 |
-| `DISPLAY=:99 npm run test:browser -- --headed` | 17 项真实浏览器测试通过 |
+| `uv run python -m unittest discover -v` | All 6 existing tests passed |
+| `npm test` | 16 frontend core tests passed, including controllable-clock tests and a complete 5-state run |
+| `DISPLAY=:99 npm run test:browser -- --headed` | 17 tests in a real browser passed |
 
-前端核心逐步对照 Python 的状态、读写头、完整稀疏纸带、窗口、`1` 数量和最近轨迹：
-2、3、4 状态覆盖到停机，5 状态覆盖前 1,000 步。
-长运行由 JavaScript 核心与真实浏览器 Worker 分别完成，核对结果如下：
+The frontend core was compared step by step with Python for state, read/write head,
+the complete sparse tape, tape window, number of `1` symbols, and recent trace.
+The comparisons covered the 2-, 3-, and 4-state machines through halting and the first
+1,000 steps of the 5-state machine. The JavaScript core and the Worker in a real browser
+each completed the long run. The verified results were:
 
-| 机器 | 实际停机步数 | 最终 `1` 数量 |
+| Machine | Actual steps to halt | Final number of `1` symbols |
 | --- | ---: | ---: |
-| 2 状态 | 6 | 4 |
-| 3 状态得分冠军 | 14 | 6 |
-| 4 状态 | 107 | 13 |
-| 5 状态记录机 | 47,176,870 | 4,098 |
+| 2-state | 6 | 4 |
+| 3-state score champion | 14 | 6 |
+| 4-state | 107 | 13 |
+| 5-state record machine | 47,176,870 | 4,098 |
 
-浏览器回归覆盖连续单步、播放中单步、暂停后单步和继续、重置、切换机器、
-固定慢放与播放中变速、达到上限后提高上限、降低上限、零步和非法输入、
-超过 200 步继续执行、停机后禁止推进，以及旧命令/旧运行/旧序列的快照隔离。
-错误路径覆盖 HTTP/网络/JSON/机器元数据错误、Worker 构造和模块加载失败、启动超时、异常转移。
+Browser regressions covered repeated single steps, stepping during playback, stepping
+and resuming after a pause, reset, machine switching, slow playback at a fixed speed,
+speed changes during playback, raising the limit after reaching it, lowering the limit,
+zero steps and invalid input, continued execution beyond 200 steps, prevention of further
+steps after halting, and isolation of snapshots from stale commands, runs, or sequences.
+Error paths covered HTTP, network, JSON, and machine metadata errors; Worker construction
+and module loading failures; startup timeouts; and invalid transitions.
 
-可控时钟验证了第 1～5 步、第 6～100 步及高速阶段的边界，
-10 毫秒计算批次与 100 毫秒刷新间隔，以及固定速度在 200 步之后仍然生效。
-保护上限测试从边界前一步执行到 50,000,000 步，验证显示上限且 `halted=false`；
-未将这项边界测试描述为完整执行五千万步的非停机机器。
+A controllable clock verified the boundaries of steps 1–5, steps 6–100, and the high-speed
+phase; 10-millisecond computation batches and 100-millisecond refresh intervals; and
+fixed speed remaining in effect beyond 200 steps. The safety-limit test started one step
+before the boundary and advanced to 50,000,000 steps, verifying that the limit was shown
+with `halted=false`. This boundary test did not constitute a complete run of a non-halting
+machine for fifty million steps.
 
-另用真实浏览器查看 1280 像素桌面与 390 像素手机宽度的截图；
-手机页面没有横向溢出，纸带窗口按数值坐标排列并保持读写头居中。
+Screenshots from a real browser were also inspected at a desktop width of 1280 pixels
+and a mobile width of 390 pixels. The mobile page had no horizontal overflow, and the
+tape window was ordered by numeric coordinates with the read/write head kept centered.
 
-## 浏览器性能实测
+## Measured Browser Performance
 
-完整运行从点击“运行”计时，到最终停机快照更新页面为止，包含约 9.75 秒的开头逐步演示，
-使用五状态默认设置，没有跳过转移或用理论记录替代计算。
-暂停测量从页面点击“暂停”开始，到界面收到暂停快照并完成 DOM 更新结束。
-每次暂停后确认步数保持不变，再验证单步只增加一步并继续高速计算。
+Full-run timing started when Run (运行 / 继续) was clicked and ended when the final halted
+snapshot updated the page. It included about 9.75 seconds of introductory step-by-step
+demonstration and used the default settings for the 5-state machine, without skipping
+transitions or substituting theoretical records for computation. Pause timing started
+when Pause (暂停) was clicked on the page and ended when the interface received the
+paused snapshot and completed the DOM update. After each pause, the step count was
+confirmed to remain unchanged; a single step was then verified to add exactly one step,
+followed by resuming high-speed computation.
 
-| 浏览器模式 | 完整运行耗时 | 5 次高速暂停响应（毫秒） | 最大暂停响应 |
+| Browser mode | Full-run time | 5 high-speed pause responses (milliseconds) | Maximum pause response |
 | --- | ---: | --- | ---: |
-| 无窗口 Chromium | 25.76 秒 | 10.3、12.8、3.2、2.8、12.1 | 12.8 毫秒 |
-| 有窗口 Chromium / Xvfb | 25.99 秒 | 6.9、3.1、2.9、2.5、13.5 | 13.5 毫秒 |
+| Headless Chromium | 25.76 seconds | 10.3, 12.8, 3.2, 2.8, 12.1 | 12.8 milliseconds |
+| Headed Chromium / Xvfb | 25.99 seconds | 6.9, 3.1, 2.9, 2.5, 13.5 | 13.5 milliseconds |
 
-本次两组测量均达到暂停响应不超过 200 毫秒的目标。这些是本机样本，
-不代表所有设备、浏览器或后台标签页的完成时间及响应保证。
-Node 核心的运行耗时不作为浏览器完成时间依据。
+Both sets of measurements met the target pause response of no more than 200 milliseconds
+on that date. These are samples from this environment, not guarantees of completion times
+or responsiveness on all devices, browsers, or background tabs. Node core execution time
+is not used as a measure of browser completion time.
 
-测试会在控制台输出 `BROWSER_FULL_RUN` 和 `BROWSER_PAUSE` JSON，
-并通过 Playwright 的 `testInfo.attach` 附加测量结果。
-失败时保留截图和 trace；`test-results/`、`playwright-report/` 和 `node_modules/` 均已忽略，
-不提交临时浏览器产物。
+Tests output `BROWSER_FULL_RUN` and `BROWSER_PAUSE` JSON to the console and attach the
+measurements through Playwright's `testInfo.attach`. Screenshots and traces are retained
+on failure. The `test-results/`, `playwright-report/`, and `node_modules/` directories
+are ignored; temporary browser artifacts are not committed.
